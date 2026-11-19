@@ -4,8 +4,10 @@ All notable changes to Claude cost guard are written here. The format follows [K
 
 ## [Unreleased]
 
-- `budget check` reads `budgets.json` without touching the usage index or hook, reports each setting that cannot be read as written, and exits 1 for unreadable settings or invalid JSON. A missing file is not an error; `--json` returns the same result as `{ ok, file, invalid, problems, budgets }`.
-- Contributed by [@Aaqibhafeezkhan](https://github.com/Aaqibhafeezkhan) in [#12](https://github.com/nrzz/claude-cost-guard/issues/12).
+## [1.5.0] - 2026-11-19
+
+- `budget check` reads `budgets.json` the way the hook does, names each setting that cannot be read as written under a count line, and exits 1 when there is one or the file is not valid JSON, 0 when every setting reads. A missing file is not a mistake (exit 0). `--json` prints `{ ok, file, invalid, problems, budgets }` (`file` is the full path, `budgets` the number in force) with the same exit codes, so a script or a dotfiles repository can check the file before using it. Nothing is written, the usage index is not read, and the hook is untouched.
+- Contributed by [@Aaqibhafeezkhan](https://github.com/Aaqibhafeezkhan) in [#14](https://github.com/nrzz/claude-cost-guard/pull/14), for the good first issue [#12](https://github.com/nrzz/claude-cost-guard/issues/12).
 
 ## [1.4.0] - 2026-11-19
 
@@ -42,6 +44,7 @@ All notable changes to Claude cost guard are written here. The format follows [K
 - First release: daily and weekly budgets in dollars or fresh tokens, zero-token warnings at 50%, 80% and 100%, hard mode, an incremental index under a time budget, report, today and statusline; a plugin.
 - Hard mode never blocks slash commands or `!` shell commands; drive-letter project paths work on macOS and Linux (caught by CI).
 
+[1.5.0]: https://github.com/nrzz/claude-cost-guard/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/nrzz/claude-cost-guard/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/nrzz/claude-cost-guard/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/nrzz/claude-cost-guard/compare/v1.1.0...v1.2.0
