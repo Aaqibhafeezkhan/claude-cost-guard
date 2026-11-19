@@ -4,7 +4,10 @@ All notable changes to Claude cost guard are written here. The format follows [K
 
 ## [Unreleased]
 
-- Each command takes only the words it documents: `budget extend` its one amount, every other command no word after its name or its `budget` subcommand. Any other word stops it with exit code 1 before anything is read or written, naming the word and the command, and suggesting the flag when the word is one of the command's flags without its dashes. `budget clear daily`, `budget clear -1`, `budget clear -`, `budget clear -- -daily` and `budget clear --daily weekly` no longer clear more than was meant, `budget set --daily 15usd hard` no longer saves a soft budget, `report 30` no longer reports 7 days, and `budget extend 5usd 3usd` no longer drops the second amount. A flag after `--` is a word now, so it stops the command too, and so does a word after `help` or `--help` (`help budget`). Contributed by [@nightlab-agent](https://github.com/nightlab-agent), for #18.
+## [1.5.2] - 2026-11-19
+
+- Each command takes only the words it documents: `budget extend` its one amount, every other command no word after its name or its `budget` subcommand. Any other word stops it with exit code 1 before anything is read or written, naming the word and the command, and suggesting the flag when the word is one of the command's flags without its dashes. `budget clear daily`, `budget clear -1`, `budget clear -` and `budget clear -- -daily` no longer clear both limits, `budget clear --daily weekly` no longer clears the daily limit alone, `budget set --daily 15usd hard` no longer saves a soft budget, `report 30` no longer reports 7 days, and `budget extend 5usd 3usd` no longer drops the second amount. A flag after `--` is a word now, so it stops the command too, and so does a word after `help` or `--help` (`help budget`). `budget extend 1M tokens` is refused as well, with a hint to write the amount as one word.
+- Contributed by [@nightlab-agent](https://github.com/nightlab-agent) in [#19](https://github.com/nrzz/claude-cost-guard/pull/19), for the bug [#18](https://github.com/nrzz/claude-cost-guard/issues/18) that nightlab-agent found while fixing #15.
 
 ## [1.5.1] - 2026-11-19
 
@@ -51,6 +54,7 @@ All notable changes to Claude cost guard are written here. The format follows [K
 - First release: daily and weekly budgets in dollars or fresh tokens, zero-token warnings at 50%, 80% and 100%, hard mode, an incremental index under a time budget, report, today and statusline; a plugin.
 - Hard mode never blocks slash commands or `!` shell commands; drive-letter project paths work on macOS and Linux (caught by CI).
 
+[1.5.2]: https://github.com/nrzz/claude-cost-guard/compare/v1.5.1...v1.5.2
 [1.5.1]: https://github.com/nrzz/claude-cost-guard/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/nrzz/claude-cost-guard/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/nrzz/claude-cost-guard/compare/v1.3.0...v1.4.0

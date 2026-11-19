@@ -100,8 +100,8 @@ test("guard.mjs with no or unknown arguments does nothing; 'version' says the ve
       assert.equal(r.status, 0, args.join(" "));
       assert.equal(r.out, "", args.join(" "));
     }
-    assert.equal(run(box, GUARD, ["version"]).stdout.trim(), "1.5.1");
-    assert.equal(run(box, GUARD, ["--version"]).stdout.trim(), "1.5.1");
+    assert.equal(run(box, GUARD, ["version"]).stdout.trim(), "1.5.2");
+    assert.equal(run(box, GUARD, ["--version"]).stdout.trim(), "1.5.2");
   } finally { box.cleanup(); }
 });
 
@@ -217,7 +217,7 @@ test("the command line as a process: output goes to stdout, errors to stderr wit
     const sl = runCli(box, ["statusline"], { input: "{}" });
     assert.equal(sl.status, 0);
     assert.equal(sl.stdout, "today $9.52 · week $10.37\n");
-    assert.equal(run(box, CLI, ["--version"]).stdout, "1.5.1\n");
+    assert.equal(run(box, CLI, ["--version"]).stdout, "1.5.2\n");
   } finally { box.cleanup(); }
 });
 
