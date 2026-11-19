@@ -171,11 +171,11 @@ test("help, version, and unknown commands", async () => {
     for (const args of [[], ["help"], ["--help"], ["-h"], ["report", "--help"]]) {
       const r = await cli(box, args);
       assert.equal(r.code, 0, args.join(" "));
-      assert.match(r.out, /claude-cost-guard 1\.5\.0: daily and weekly token budgets/);
+      assert.match(r.out, /claude-cost-guard 1\.5\.1: daily and weekly token budgets/);
       assert.match(r.out, /budget set --daily <amount>/);
       assert.match(r.out, /CLAUDE_COST_GUARD_OFF=1/);
     }
-    for (const args of [["--version"], ["version"], ["-v"]]) assert.deepEqual(await cli(box, args), { code: 0, out: "1.5.0", err: "" });
+    for (const args of [["--version"], ["version"], ["-v"]]) assert.deepEqual(await cli(box, args), { code: 0, out: "1.5.1", err: "" });
     const help = await cli(box, ["help"]);
     for (const command of ["help", "--help", "-h"]) {
       for (const flag of ["--help", "-h"]) assert.deepEqual(await cli(box, [command, flag]), help, `${command} ${flag}`);

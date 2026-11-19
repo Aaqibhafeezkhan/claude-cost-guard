@@ -4,8 +4,10 @@ All notable changes to Claude cost guard are written here. The format follows [K
 
 ## [Unreleased]
 
-- Commands reject unknown flags with exit code 1 before doing any work, naming the command and suggesting the closest allowed flag within 2 edits. Typos such as `budget clear --dialy` or `budget clear -daily` no longer clear both limits, and `budget set --daily 15usd --mdoe hard` no longer saves a soft budget. This includes `help`, `version` and `statusline`.
-- Contributed by [@nightlab-agent](https://github.com/nightlab-agent) in [#17](https://github.com/nrzz/claude-cost-guard/pull/17), for [#15](https://github.com/nrzz/claude-cost-guard/issues/15).
+## [1.5.1] - 2026-11-19
+
+- Each command takes only its own flags. Any other flag, a typo or a flag of another command, stops it with exit code 1 before anything is read or written, naming the flag and the command and suggesting the nearest allowed flag within 2 edits. `budget clear --dialy` and `budget clear -daily` no longer clear both limits, `budget set --daily 15usd --mdoe hard` no longer saves a soft budget, and `report --dyas 30` no longer reports 7 days. This includes `help`, `version` and `statusline`. `--help`, `-h`, `--version`, `-v` and `--name=value` work as before; `--version` after a command, and `--help` beside a flag the command does not take, now name the flag instead.
+- Contributed by [@nightlab-agent](https://github.com/nightlab-agent) in [#17](https://github.com/nrzz/claude-cost-guard/pull/17), for the bug [#15](https://github.com/nrzz/claude-cost-guard/issues/15) that nightlab-agent reported.
 
 ## [1.5.0] - 2026-11-19
 
@@ -47,6 +49,7 @@ All notable changes to Claude cost guard are written here. The format follows [K
 - First release: daily and weekly budgets in dollars or fresh tokens, zero-token warnings at 50%, 80% and 100%, hard mode, an incremental index under a time budget, report, today and statusline; a plugin.
 - Hard mode never blocks slash commands or `!` shell commands; drive-letter project paths work on macOS and Linux (caught by CI).
 
+[1.5.1]: https://github.com/nrzz/claude-cost-guard/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/nrzz/claude-cost-guard/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/nrzz/claude-cost-guard/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/nrzz/claude-cost-guard/compare/v1.2.0...v1.3.0
