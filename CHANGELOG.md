@@ -4,7 +4,10 @@ All notable changes to Claude cost guard are written here. The format follows [K
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-11-19
+
 - `budget set --model` and `budget show` suggest the closest model when a name matches nothing in your history: `opuss` gives `Did you mean "opus"?`. It compares the name with each model id and each `-`-separated word of it (words of at least 4 characters) and suggests one only when it is within 2 edits, so `xyz` gets no suggestion and the note reads as before. Nothing else changes: a name that matches prints no note, the hook is untouched, and the exit code stays 0.
+- Contributed by [@matheussilvano](https://github.com/matheussilvano) in [#10](https://github.com/nrzz/claude-cost-guard/pull/10), for the good first issue [#9](https://github.com/nrzz/claude-cost-guard/issues/9). The pull request's tests ran on Windows, macOS and Linux with Node 18 to 24 before the merge.
 - A hand-edited `budgets.json` is read as you meant it where that is beyond doubt: an amount written as text (`"6"`), a mode or unit in capitals (`"Hard"`, `"USD"`). Before, either edit turned a hard stop off without a word: the limit was dropped, or the budget was read as soft.
 - Every setting that still cannot be read is named, with what follows from it (a limit not in force, a budget read as soft, a key cost guard does not read, such as `"dialy"`, a project with no folder): `budget show` lists each one; the hook says so once a day in a line shown to you, never to the model, with the day's warnings or on its own when no budget is left in force (a block is still said alone, and the note waits for the next prompt); `budget set`, `clear` and `extend` say the file was saved without them. The hook now also says once a day when the file is not valid JSON, which before it never did. Keys that start with `_`, `$` or `//` are notes and are left alone.
 - Reported by [@nightlab-agent](https://github.com/nightlab-agent) in [#11](https://github.com/nrzz/claude-cost-guard/issues/11), with the exact commands and the lines at fault.
@@ -36,6 +39,7 @@ All notable changes to Claude cost guard are written here. The format follows [K
 - First release: daily and weekly budgets in dollars or fresh tokens, zero-token warnings at 50%, 80% and 100%, hard mode, an incremental index under a time budget, report, today and statusline; a plugin.
 - Hard mode never blocks slash commands or `!` shell commands; drive-letter project paths work on macOS and Linux (caught by CI).
 
+[1.4.0]: https://github.com/nrzz/claude-cost-guard/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/nrzz/claude-cost-guard/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/nrzz/claude-cost-guard/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/nrzz/claude-cost-guard/compare/v1.0.1...v1.1.0
