@@ -5,10 +5,12 @@
 //   {"decision":"block","reason":"..."}     the prompt is not sent, so the model never sees it (hard mode only)
 // Prompts that are not typed by a person (source is not "user") are skipped, and a hook never fails a
 // session: any problem ends with no output (it goes to <configDir>/cost-guard/errors.log).
-import { amountArg, applicable, displayPct, evaluate, fmtLimit, isOver, levelOf, loadBudgets, niceStep } from "./budgets.mjs";
+import { amountArg, applicable, displayPct, evaluate, fileNotice, fmtLimit, isOver, levelOf, loadBudgets, niceStep } from "./budgets.mjs";
 import { refresh } from "./index.mjs";
 import { buildCells } from "./usage.mjs";
-import { configDir, dayKeyOf, fmtMoney, fmtMoneyShort, fmtTokens, logError, readJson, stateFile, weekStartDay, writeJsonAtomic } from "./util.mjs";
+import {
+  budgetsFile, configDir, dayKeyOf, fmtMoney, fmtMoneyShort, fmtTokens, lockFile, logError, readJson, releaseLock, stateFile, takeLock, weekStartDay, writeJsonAtomic,
+} from "./util.mjs";
 
 export const DEFAULT_BUDGET_MS = 250;
 
@@ -104,6 +106,27 @@ const loadMarks = (cfg, today) => {
   return s && s.day === today && s.marks && typeof s.marks === "object" && !Array.isArray(s.marks) ? s.marks : {};
 };
 
+// The mark under which a notice about budgets.json is filed for the day: its words, so a file that changes is told again.
+export function noticeMark(text) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193) >>> 0;
+  return `file|${h.toString(16)}`;
+}
+
+// With no budget in force here there is no usage to read, so the notice about the file is recorded on its own, under
+// the same lock that guards the marks. A run that cannot take the lock says nothing and leaves it to the next prompt.
+function noticeAlone(cfg, notice, today) {
+  const lock = lockFile(cfg);
+  if (!takeLock(lock, { waitMs: 120 })) return null;
+  try {
+    const marks = loadMarks(cfg, today);
+    const mark = noticeMark(notice);
+    if (marks[mark]) return null;
+    writeJsonAtomic(stateFile(cfg), { day: today, marks: { ...marks, [mark]: 1 } }, 2);
+    return notice;
+  } finally { releaseLock(lock); }
+}
+
 /**
  * Run the hook for one prompt. `stdin` is the JSON Claude Code sends. Returns {output} where output is the
  * single line to print, or null for silence.
@@ -122,8 +145,16 @@ export async function runHook({ env = process.env, stdin = "", now = Date.now() 
 
   const cfg = configDir(env);
   try {
-    const entries = applicable(loadBudgets(cfg), typeof input.cwd === "string" ? input.cwd : "");
-    if (!entries.length) return result; // no budget here: no work at all
+    const b = loadBudgets(cfg);
+    // A budgets file that cannot be read as written is said once a day (fileNotice): a hard stop that was dropped or
+    // read as soft must not go unnoticed. A missing file, the usual case, has nothing to say.
+    const notice = fileNotice(b, budgetsFile(cfg));
+    const entries = applicable(b, typeof input.cwd === "string" ? input.cwd : "");
+    if (!entries.length) { // no budget here: no usage to read
+      const alone = notice && noticeAlone(cfg, notice, dayKeyOf(now));
+      if (alone) result.output = toAsciiJson({ systemMessage: alone });
+      return result;
+    }
     const today = dayKeyOf(now);
     // Deciding what to announce and recording it happen under the same lock as reading the transcripts, so two
     // prompts sent at the same moment (two windows) cannot both announce the same threshold.
@@ -131,7 +162,11 @@ export async function runHook({ env = process.env, stdin = "", now = Date.now() 
       now, budgetMs: envNumber(env, "CLAUDE_COST_GUARD_BUDGET_MS", DEFAULT_BUDGET_MS), priority: [input.transcript_path], lockWaitMs: 120,
       whileLocked: (idx, stats) => {
         const slots = evaluate(buildCells(idx, { fromDay: weekStartDay(today), toDay: today }), entries, today);
-        const p = plan(slots, loadMarks(cfg, today), { announce: stats.locked });
+        let p = plan(slots, loadMarks(cfg, today), { announce: stats.locked });
+        // The notice rides with the day's warnings; a block is said alone, and the notice waits for a prompt that is not blocked.
+        if (notice && stats.locked && !p.block && !p.marks[noticeMark(notice)]) {
+          p = { ...p, message: [p.message, notice].filter(Boolean).join("\n"), marks: { ...p.marks, [noticeMark(notice)]: 1 }, changed: true };
+        }
         if (p.changed) writeJsonAtomic(stateFile(cfg), { day: today, marks: p.marks }, 2);
         return { slots, p };
       },

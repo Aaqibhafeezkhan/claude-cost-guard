@@ -5,6 +5,9 @@ All notable changes to Claude cost guard are written here. The format follows [K
 ## [Unreleased]
 
 - `budget set --model` and `budget show` suggest the closest model when a name matches nothing in your history: `opuss` gives `Did you mean "opus"?`. It compares the name with each model id and each `-`-separated word of it (words of at least 4 characters) and suggests one only when it is within 2 edits, so `xyz` gets no suggestion and the note reads as before. Nothing else changes: a name that matches prints no note, the hook is untouched, and the exit code stays 0.
+- A hand-edited `budgets.json` is read as you meant it where that is beyond doubt: an amount written as text (`"6"`), a mode or unit in capitals (`"Hard"`, `"USD"`). Before, either edit turned a hard stop off without a word: the limit was dropped, or the budget was read as soft.
+- Every setting that still cannot be read is named, with what follows from it (a limit not in force, a budget read as soft, a key cost guard does not read, such as `"dialy"`, a project with no folder): `budget show` lists each one; the hook says so once a day in a line shown to you, never to the model, with the day's warnings or on its own when no budget is left in force (a block is still said alone, and the note waits for the next prompt); `budget set`, `clear` and `extend` say the file was saved without them. The hook now also says once a day when the file is not valid JSON, which before it never did. Keys that start with `_`, `$` or `//` are notes and are left alone.
+- Reported by [@nightlab-agent](https://github.com/nightlab-agent) in [#11](https://github.com/nrzz/claude-cost-guard/issues/11), with the exact commands and the lines at fault.
 
 ## [1.3.0] - 2026-11-03
 

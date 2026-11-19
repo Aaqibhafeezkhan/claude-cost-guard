@@ -229,6 +229,14 @@ function cmdBudget(args, ctx) {
   const today = dayKeyOf(ctx.now);
   const b = loadBudgets(cfg);
   if (b.invalid && sub !== "show") throw new UserError(`${budgetsFile(cfg)} is not valid JSON. Fix it, or delete it to start again.`);
+  // Settings in the file that could not be read as written: named by every budget command, so none goes unnoticed, and
+  // a command that saves the file says that they are not kept in it.
+  const fileNotes = b.problems.map((p) => `Note: in budgets.json, ${p.text}`);
+  const savedWithout = () => {
+    if (!fileNotes.length) return;
+    for (const n of fileNotes) ctx.io.out(n);
+    ctx.io.out(`Note: the file was saved just now without ${fileNotes.length === 1 ? "that setting" : "those settings"}.`);
+  };
   if (args.all && args.project !== undefined) throw new UserError("Use --project <dir> or --all, not both.");
   const dir = args.project === undefined ? null : projectDir(args.project, ctx.cwd);
   const model = args.model === undefined ? null : stringArg("--model", args.model, "opus");
@@ -251,6 +259,7 @@ function cmdBudget(args, ctx) {
     else label = "all projects";
     ctx.io.out(`Budget set for ${label}: ${[target.daily && `daily ${fmtAmount(target.daily)}`, target.weekly && `weekly ${fmtAmount(target.weekly)}`].filter(Boolean).join(", ")} (${target.mode}).`);
     if (dir && !fs.existsSync(dir)) ctx.io.out(`Note: ${dir} does not exist on this machine (the budget applies to sessions that ran there).`);
+    savedWithout();
     const scopeKey = model ? (dir ? `${normPath(dir)}|model:${model.trim().toLowerCase()}` : `model:${model.trim().toLowerCase()}`) : scopeKeyOf(dir);
     const caught = catchUp(ctx);
     if (model) {
@@ -271,7 +280,10 @@ function cmdBudget(args, ctx) {
     if (b.invalid) ctx.io.out(`${budgetsFile(cfg)} is not valid JSON, so no budget is in force. Fix it, or delete it to start again.`);
     const entries = entriesOf(b);
     if (!entries.length) {
-      ctx.io.out("No budgets set. For example:  claude-cost-guard budget set --daily 15usd --weekly 80usd");
+      for (const n of fileNotes) ctx.io.out(n);
+      ctx.io.out(fileNotes.length
+        ? "No budget is in force. Fix the settings above, or set one with:  claude-cost-guard budget set --daily 15usd"
+        : "No budgets set. For example:  claude-cost-guard budget set --daily 15usd --weekly 80usd");
       return 0;
     }
     ctx.io.out(`Budgets (${budgetsFile(cfg)})`);
@@ -285,6 +297,7 @@ function cmdBudget(args, ctx) {
       const unmatched = unmatchedModel(e.model, seen);
       if (unmatched) ctx.io.out(`Note: ${unmatched} That budget counts nothing until one matches.`);
     }
+    for (const n of fileNotes) ctx.io.out(n);
     return 0;
   }
 
@@ -294,6 +307,7 @@ function cmdBudget(args, ctx) {
     saveBudgets(cfg, b);
     syncMarks(cfg, today, [], limitKeys(entriesOf(b))); // forgets the announcements of limits that are gone
     ctx.io.out(`Cleared ${n} limit${n === 1 ? "" : "s"}.`);
+    savedWithout();
     return 0;
   }
 
@@ -308,6 +322,7 @@ function cmdBudget(args, ctx) {
     }
     saveBudgets(cfg, b);
     ctx.io.out(`Extended ${keys.length} budget${keys.length === 1 ? "" : "s"} by ${fmtAmount(amount)} for today (until midnight).`);
+    savedWithout();
     showUsage(ctx, cfg, b, keys);
     return 0;
   }

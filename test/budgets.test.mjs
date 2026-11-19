@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import {
-  applicable, clearBudget, entriesOf, evaluate, extendBudget, isOver, limitKeys, loadBudgets, parseAmount, saveBudgets, setBudget,
+  applicable, clearBudget, entriesOf, evaluate, extendBudget, fileNotice, isOver, limitKeys, loadBudgets, parseAmount, saveBudgets, setBudget,
 } from "../src/budgets.mjs";
 import { refresh } from "../src/index.mjs";
 import { buildCells } from "../src/usage.mjs";
@@ -14,7 +14,11 @@ import { ALPHA, BETA, NOW, buildFixture, expected, near, readJson, sandbox } fro
 const TODAY = "2026-10-07";
 const usd = (n) => ({ unit: "usd", amount: n });
 const tok = (n) => ({ unit: "tokens", amount: n });
-const fresh = () => ({ version: 1, global: null, projects: [], invalid: false });
+const fresh = () => ({ version: 1, global: null, projects: [], invalid: false, problems: [] });
+const writeRaw = (box, raw) => {
+  fs.mkdirSync(box.guard, { recursive: true });
+  fs.writeFileSync(path.join(box.guard, "budgets.json"), typeof raw === "string" ? raw : JSON.stringify(raw));
+};
 
 test("a missing budgets file means no budgets; a broken one is flagged, not trusted", () => {
   const box = sandbox();
@@ -51,6 +55,87 @@ test("budgets round-trip through the file, and junk inside it is dropped", () =>
     assert.deepEqual(entriesOf(loaded).map((e) => e.key), ["/ok"], "no valid limit: no budget");
     assert.deepEqual(loaded.projects[0].ext, { day: TODAY, usd: 3, tokens: 0 });
     assert.equal(loaded.projects[0].mode, "hard");
+    assert.deepEqual(loaded.problems.map((p) => p.at), ["global.daily.amount", "global.weekly.unit", "global.mode", "projects[0].dir", "projects[1].dir", "projects[3]"], "each dropped setting is named");
+  } finally { box.cleanup(); }
+});
+
+test("a hand edit is read as meant where that is beyond doubt: an amount as text, a mode or unit in capitals", () => {
+  const box = sandbox();
+  try {
+    writeRaw(box, {
+      version: 1,
+      global: { daily: { unit: "usd", amount: "6" }, weekly: { unit: "USD", amount: " 40.50 " }, mode: "Hard" },
+      projects: [{ dir: ALPHA, daily: { unit: " Tokens ", amount: "3000000" }, mode: " SOFT " }],
+      models: [{ model: "opus", daily: { unit: "usd", amount: ".5" }, mode: "HARD" }],
+    });
+    const b = loadBudgets(box.cfg);
+    assert.deepEqual(b.problems, [], "nothing to report");
+    assert.deepEqual(b.global, { daily: usd(6), weekly: usd(40.5), mode: "hard" });
+    assert.deepEqual(b.projects[0], { dir: ALPHA, daily: tok(3e6), mode: "soft" });
+    assert.deepEqual(b.models[0], { model: "opus", dir: null, daily: usd(0.5), mode: "hard" });
+    saveBudgets(box.cfg, b);
+    const saved = readJson(path.join(box.guard, "budgets.json"));
+    assert.deepEqual(saved.global, { daily: usd(6), weekly: usd(40.5), mode: "hard" }, "saved back as numbers and lower case");
+    assert.equal("problems" in saved || "invalid" in saved, false);
+  } finally { box.cleanup(); }
+});
+
+test("every setting that cannot be read is named with where it is and what happens; notes for a person are left alone", () => {
+  const box = sandbox();
+  try {
+    writeRaw(box, {
+      version: 1,
+      _comment: "my budgets",
+      "//": "a note",
+      globl: {},
+      global: { daily: { unit: "usd", amount: "six" }, dialy: { unit: "usd", amount: 5 }, mode: "block", $note: "x" },
+      projects: [
+        { dir: ALPHA, daily: "15usd" },
+        { dir: BETA, weekly: { amount: 5 }, daily: { unit: "usd" } },
+        { dir: "/c", daily: { unit: "eur", amount: 5 }, weekly: { unit: "usd", amount: 0 } },
+      ],
+      models: [{ daily: usd(1) }, "opus"],
+    });
+    const b = loadBudgets(box.cfg);
+    assert.deepEqual(b.problems.map((p) => p.at), [
+      "global.daily.amount", "global.mode", "global.dialy",
+      "projects[0].daily", "projects[1].daily.amount", "projects[1].weekly.unit", "projects[2].daily.unit", "projects[2].weekly.amount",
+      "models[0].model", "models[1]",
+      "globl",
+    ]);
+    const text = (at) => b.problems.find((p) => p.at === at).text;
+    assert.equal(text("global.daily.amount"), 'global.daily.amount is "six", which is not a number above 0, so that limit is not in force.');
+    assert.equal(text("global.mode"), 'global.mode is "block", which is neither "hard" nor "soft", so the budget is soft.');
+    assert.equal(text("global.dialy"), 'global has "dialy", a setting cost guard does not read, so it does nothing.');
+    assert.equal(text("projects[0].daily"), 'projects[0].daily is "15usd", not an object such as {"unit": "usd", "amount": 15}, so that limit is not in force.');
+    assert.equal(text("projects[1].weekly.unit"), 'projects[1].weekly has no "unit" ("usd" or "tokens"), so that limit is not in force.');
+    assert.equal(text("projects[2].daily.unit"), 'projects[2].daily.unit is "eur", which is neither "usd" nor "tokens", so that limit is not in force.');
+    assert.equal(text("models[0].model"), 'models[0] has no "model" (the model family or name it covers), so it is not in force.');
+    assert.equal(text("models[1]"), 'models[1] is "opus", not an object, so it is not in force.');
+    assert.equal(text("globl"), 'the file has "globl", a setting cost guard does not read, so it does nothing.');
+    assert.deepEqual(entriesOf(b), [], "as before, nothing unreadable is in force");
+    writeRaw(box, { projects: { dir: ALPHA }, models: 3, global: [] });
+    assert.deepEqual(loadBudgets(box.cfg).problems.map((p) => p.text), [
+      "global is [], not an object, so no budget for all projects is in force.",
+      'projects is {"dir":"D:\\\\work\\\\alpha"}, not a list, so no project budget is in force.',
+      "models is 3, not a list, so no model budget is in force.",
+    ]);
+  } finally { box.cleanup(); }
+});
+
+test("fileNotice: nothing for a clean or missing file, the JSON error, one setting in full, several by name", () => {
+  const box = sandbox();
+  try {
+    const file = path.join(box.guard, "budgets.json");
+    assert.equal(fileNotice(loadBudgets(box.cfg), file), null, "missing");
+    writeRaw(box, { version: 1, global: { daily: usd(5), mode: "hard" } });
+    assert.equal(fileNotice(loadBudgets(box.cfg), file), null, "clean");
+    writeRaw(box, "{oops");
+    assert.equal(fileNotice(loadBudgets(box.cfg), file), `Cost guard: ${file} is not valid JSON, so no budget is in force. Fix it, or delete it to start again.`);
+    writeRaw(box, { global: { daily: usd(5), mode: "Hrad" } });
+    assert.equal(fileNotice(loadBudgets(box.cfg), file), 'Cost guard: in budgets.json, global.mode is "Hrad", which is neither "hard" nor "soft", so the budget is soft.');
+    writeRaw(box, { a: 1, b: 2, c: 3, d: 4, e: 5 });
+    assert.equal(fileNotice(loadBudgets(box.cfg), file), "Cost guard: budgets.json has 5 settings it cannot read as written (a, b, c and 2 more). Run  claude-cost-guard budget show  to see each one.");
   } finally { box.cleanup(); }
 });
 

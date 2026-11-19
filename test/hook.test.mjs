@@ -312,12 +312,69 @@ test("a failure inside the hook is logged and says nothing", async () => {
   } finally { box.cleanup(); }
 });
 
-test("a corrupt budgets file means no budget, not a failure", async () => {
+const writeRaw = (box, raw) => {
+  fs.mkdirSync(box.guard, { recursive: true });
+  fs.writeFileSync(path.join(box.guard, "budgets.json"), typeof raw === "string" ? raw : JSON.stringify(raw));
+};
+const DAY = 24 * 3600 * 1000;
+
+test("a corrupt budgets file means no budget, not a failure, and the hook says so once a day", async () => {
   const box = world();
   try {
-    fs.mkdirSync(box.guard, { recursive: true });
-    fs.writeFileSync(path.join(box.guard, "budgets.json"), "{oops");
+    writeRaw(box, "{oops");
+    const first = await say(box);
+    assert.deepEqual(Object.keys(first), ["systemMessage"], "a line for the person, never a block");
+    assert.equal(first.systemMessage, `Cost guard: ${path.join(box.guard, "budgets.json")} is not valid JSON, so no budget is in force. Fix it, or delete it to start again.`);
+    assert.equal(await say(box), null, "once a day");
+    assert.match((await say(box, {}, { now: box.now + DAY })).systemMessage, /is not valid JSON/, "and again the next day");
+  } finally { box.cleanup(); }
+});
+
+test("a budget written by hand as the text \"9\", or with the mode \"Hard\", still stops a prompt (issue #11)", async () => {
+  const box = world();
+  try {
+    for (const global of [{ daily: { unit: "usd", amount: "9" }, mode: "hard" }, { daily: { unit: "usd", amount: 9 }, mode: "Hard" }]) {
+      writeRaw(box, { version: 1, global, projects: [] });
+      const r = await say(box);
+      assert.equal(r.decision, "block", JSON.stringify(global)); // $9.52 spent today
+      assert.match(r.reason, /today's budget of \$9 is used \(\$9\.52\)/);
+    }
+  } finally { box.cleanup(); }
+});
+
+test("a setting the hook cannot read is said once a day, in the same message as the day's warnings", async () => {
+  const box = world();
+  try {
+    writeRaw(box, { version: 1, global: { daily: usd(15), mode: "block" } });
+    const r = await say(box);
+    assert.equal(r.systemMessage, 'Cost guard: today $9.52 of $15 (63%)\nCost guard: in budgets.json, global.mode is "block", which is neither "hard" nor "soft", so the budget is soft.');
+    assert.equal(await say(box), null, "both said once");
+    writeRaw(box, { version: 1, global: { daily: usd(15), mode: "block", weekley: usd(80) } });
+    assert.match((await say(box)).systemMessage, /^Cost guard: budgets\.json has 2 settings it cannot read as written \(global\.mode, global\.weekley\)\./, "a file that changed is told again");
+  } finally { box.cleanup(); }
+});
+
+test("when no budget is left in force the hook says why, once a day, and reads no usage", async () => {
+  const box = world();
+  try {
+    writeRaw(box, { version: 1, global: { daily: { unit: "usd", amount: "six" }, mode: "hard" } });
+    assert.equal((await say(box)).systemMessage, 'Cost guard: in budgets.json, global.daily.amount is "six", which is not a number above 0, so that limit is not in force.');
     assert.equal(await say(box), null);
+    assert.equal(fs.existsSync(path.join(box.guard, "index.lock")), false, "the lock is given back");
+  } finally { box.cleanup(); }
+});
+
+test("a block is said alone: the notice about the file waits for a prompt that is not stopped", async () => {
+  const box = world();
+  try {
+    writeRaw(box, { version: 1, global: { daily: usd(9), mode: "hard", dialy: usd(1) } });
+    const blocked = await say(box);
+    assert.equal(blocked.decision, "block");
+    assert.doesNotMatch(blocked.reason, /budgets\.json/);
+    const state = path.join(box.guard, "state.json");
+    assert.equal(fs.existsSync(state) && Object.keys(readJson(state).marks).some((k) => k.startsWith("file|")), false, "not recorded as said");
+    writeRaw(box, { version: 1, global: { daily: usd(9), mode: "soft", dialy: usd(1) } });
+    assert.match((await say(box)).systemMessage, /global has "dialy", a setting cost guard does not read/);
   } finally { box.cleanup(); }
 });
 

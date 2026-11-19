@@ -76,48 +76,119 @@ export function modelMatches(pattern, model) {
 // The file
 // ---------------------------------------------------------------------------------------------
 
-const validAmount = (a) => a && typeof a === "object" && (a.unit === "usd" || a.unit === "tokens") && Number.isFinite(a.amount) && a.amount > 0
-  ? { unit: a.unit, amount: a.amount } : null;
-function normalizeScope(s) {
-  if (!s || typeof s !== "object") return null;
+// The file is plain JSON that a person may edit by hand. Where what they meant is beyond doubt it is read that way (an
+// amount written as the text "6", a mode or unit written "Hard" or "USD"), and every setting that still cannot be read
+// is named in `problems` ({at, text}), so that nothing a person wrote is dropped or read as soft without a word:
+// budget show lists them, and the hook says so once a day. Keys that start with _ or $ or // are notes for a person.
+const PLAIN_NUMBER = /^\s*(?:\d+(?:\.\d+)?|\.\d+)\s*$/;
+const NOTE_KEY = /^(?:_|\$|\/\/)/;
+const SCOPE_KEYS = ["daily", "weekly", "mode", "ext"];
+const TOP_KEYS = ["version", "global", "projects", "models"];
+const isObject = (v) => !!v && typeof v === "object" && !Array.isArray(v);
+const shown = (v) => {
+  const s = JSON.stringify(v);
+  if (s === undefined) return String(v);
+  return s.length > 40 ? `${s.slice(0, 37)}...` : s;
+};
+
+function readLimit(v, at, problems) {
+  if (v === undefined || v === null) return null;
+  const off = "so that limit is not in force.";
+  if (!isObject(v)) { problems.push({ at, text: `${at} is ${shown(v)}, not an object such as {"unit": "usd", "amount": 15}, ${off}` }); return null; }
+  if (v.unit === undefined) { problems.push({ at: `${at}.unit`, text: `${at} has no "unit" ("usd" or "tokens"), ${off}` }); return null; }
+  const unit = typeof v.unit === "string" ? v.unit.trim().toLowerCase() : v.unit;
+  if (unit !== "usd" && unit !== "tokens") { problems.push({ at: `${at}.unit`, text: `${at}.unit is ${shown(v.unit)}, which is neither "usd" nor "tokens", ${off}` }); return null; }
+  if (v.amount === undefined) { problems.push({ at: `${at}.amount`, text: `${at} has no "amount", ${off}` }); return null; }
+  const amount = typeof v.amount === "string" && PLAIN_NUMBER.test(v.amount) ? Number(v.amount) : v.amount;
+  if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
+    problems.push({ at: `${at}.amount`, text: `${at}.amount is ${shown(v.amount)}, which is not a number above 0, ${off}` });
+    return null;
+  }
+  return { unit, amount };
+}
+
+function normalizeScope(s, at, problems, ownKeys = []) {
   const out = {};
-  const daily = validAmount(s.daily);
-  const weekly = validAmount(s.weekly);
+  const daily = readLimit(s.daily, `${at}.daily`, problems);
+  const weekly = readLimit(s.weekly, `${at}.weekly`, problems);
   if (daily) out.daily = daily;
   if (weekly) out.weekly = weekly;
-  out.mode = s.mode === "hard" ? "hard" : "soft";
+  const mode = typeof s.mode === "string" ? s.mode.trim().toLowerCase() : s.mode;
+  out.mode = mode === "hard" ? "hard" : "soft";
+  if (mode !== "hard" && mode !== "soft" && mode !== undefined && mode !== null) {
+    problems.push({ at: `${at}.mode`, text: `${at}.mode is ${shown(s.mode)}, which is neither "hard" nor "soft", so the budget is soft.` });
+  }
   if (s.ext && typeof s.ext === "object" && typeof s.ext.day === "string") {
     out.ext = { day: s.ext.day, usd: Math.max(0, Number(s.ext.usd) || 0), tokens: Math.max(0, Number(s.ext.tokens) || 0) };
   }
-  return out;
-}
-
-/** budgets.json as {global, projects, invalid}. A missing file means no budgets; an unreadable one is flagged. */
-export function loadBudgets(cfg) {
-  const out = { version: 1, global: null, projects: [], invalid: false };
-  let text;
-  try { text = stripBom(fs.readFileSync(budgetsFile(cfg), "utf8")); } catch { return out; }
-  let raw;
-  try { raw = JSON.parse(text); } catch { out.invalid = true; return out; }
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) { out.invalid = true; return out; }
-  out.global = normalizeScope(raw.global);
-  for (const p of Array.isArray(raw.projects) ? raw.projects : []) {
-    const s = normalizeScope(p);
-    if (s && typeof p.dir === "string" && p.dir) out.projects.push({ dir: p.dir, ...s });
-  }
-  if (Array.isArray(raw.models)) {
-    out.models = [];
-    for (const m of raw.models) {
-      const s = normalizeScope(m);
-      if (s && typeof m.model === "string" && m.model.trim()) {
-        out.models.push({ model: m.model.trim(), dir: typeof m.dir === "string" ? m.dir : null, ...s });
-      }
+  for (const k of Object.keys(s)) {
+    if (!SCOPE_KEYS.includes(k) && !ownKeys.includes(k) && !NOTE_KEY.test(k)) {
+      problems.push({ at: `${at}.${k}`, text: `${at} has ${shown(k)}, a setting cost guard does not read, so it does nothing.` });
     }
   }
   return out;
 }
+
+// The entries of a "projects" or "models" list: each must be an object with its own key (`dir`, `model`).
+function readList(raw, name, need, problems, take) {
+  if (raw === undefined || raw === null) return;
+  if (!Array.isArray(raw)) { problems.push({ at: name, text: `${name} is ${shown(raw)}, not a list, so ${need.none}.` }); return; }
+  raw.forEach((e, i) => {
+    const at = `${name}[${i}]`;
+    if (!isObject(e)) { problems.push({ at, text: `${at} is ${shown(e)}, not an object, so it is not in force.` }); return; }
+    const s = normalizeScope(e, at, problems, need.keys);
+    if (!take(e, s)) problems.push({ at: `${at}.${need.keys[0]}`, text: `${at} has no "${need.keys[0]}" (${need.what}), so it is not in force.` });
+  });
+}
+
+/**
+ * budgets.json as {global, projects, models?, invalid, problems}. A missing file means no budgets; one that is not
+ * a JSON object is flagged `invalid`; settings that cannot be read are left out and named in `problems`.
+ */
+export function loadBudgets(cfg) {
+  const out = { version: 1, global: null, projects: [], invalid: false, problems: [] };
+  let text;
+  try { text = stripBom(fs.readFileSync(budgetsFile(cfg), "utf8")); } catch { return out; }
+  let raw;
+  try { raw = JSON.parse(text); } catch { out.invalid = true; return out; }
+  if (!isObject(raw)) { out.invalid = true; return out; }
+  const problems = out.problems;
+  if (isObject(raw.global)) out.global = normalizeScope(raw.global, "global", problems);
+  else if (raw.global !== undefined && raw.global !== null) {
+    problems.push({ at: "global", text: `global is ${shown(raw.global)}, not an object, so no budget for all projects is in force.` });
+  }
+  readList(raw.projects, "projects", { keys: ["dir"], what: "the folder it covers", none: "no project budget is in force" }, problems, (p, s) => {
+    if (typeof p.dir !== "string" || !p.dir) return false;
+    out.projects.push({ dir: p.dir, ...s });
+    return true;
+  });
+  if (Array.isArray(raw.models)) out.models = [];
+  readList(raw.models, "models", { keys: ["model", "dir"], what: "the model family or name it covers", none: "no model budget is in force" }, problems, (m, s) => {
+    if (typeof m.model !== "string" || !m.model.trim()) return false;
+    out.models.push({ model: m.model.trim(), dir: typeof m.dir === "string" ? m.dir : null, ...s });
+    return true;
+  });
+  for (const k of Object.keys(raw)) {
+    if (!TOP_KEYS.includes(k) && !NOTE_KEY.test(k)) problems.push({ at: k, text: `the file has ${shown(k)}, a setting cost guard does not read, so it does nothing.` });
+  }
+  return out;
+}
+
+/**
+ * The one line the hook says about a budgets file it cannot read as written, or null when there is nothing to say.
+ * `file` is the file's path, as budget show names it.
+ */
+export function fileNotice(b, file) {
+  if (b.invalid) return `Cost guard: ${file} is not valid JSON, so no budget is in force. Fix it, or delete it to start again.`;
+  const p = b.problems || [];
+  if (!p.length) return null;
+  if (p.length === 1) return `Cost guard: in budgets.json, ${p[0].text}`;
+  const names = p.slice(0, 3).map((x) => x.at).join(", ") + (p.length > 3 ? ` and ${p.length - 3} more` : "");
+  return `Cost guard: budgets.json has ${p.length} settings it cannot read as written (${names}). Run  claude-cost-guard budget show  to see each one.`;
+}
+
 export function saveBudgets(cfg, b) {
-  const { invalid, ...rest } = b;
+  const { invalid, problems, ...rest } = b;
   if (rest.models && rest.models.length === 0) delete rest.models;
   writeJsonAtomic(budgetsFile(cfg), rest, 2);
 }
