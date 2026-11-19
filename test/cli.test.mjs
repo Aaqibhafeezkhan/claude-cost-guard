@@ -297,7 +297,7 @@ test("budget set says what is wrong with what you typed", async () => {
       [["set", "--daily", "0usd"], /must be more than 0/],
       [["set", "--daily", "5usd", "--mode", "extreme"], /--mode takes soft or hard, not "extreme"/],
       [["set", "--daily", "5usd", "--project", "x", "--all"], /Use --project <dir> or --all, not both/],
-      [["frob"], /Unknown budget command "frob"\. Use set, show, clear or extend\./],
+      [["frob"], /Unknown budget command "frob"\. Use set, show, clear, extend or check\./],
     ];
     for (const [args, re] of cases) {
       const r = await budget(box, ...args);
