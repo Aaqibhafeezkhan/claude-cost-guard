@@ -29,6 +29,7 @@ Set up
 Budgets (dollars at API list prices, or fresh tokens: input + output + cache writes)
   claude-cost-guard budget set --daily <amount> [--weekly <amount>] [--project <dir> | --all] [--model <family>] [--mode soft|hard]
   claude-cost-guard budget show
+  claude-cost-guard budget check [--json]
   claude-cost-guard budget clear [--project <dir> | --all] [--model <family>] [--daily] [--weekly]
   claude-cost-guard budget extend <amount> [--project <dir> | --all] [--model <family>]     raises today's limits; gone at midnight
   amounts: 15usd or '$15' (quote it: shells expand $15), 3M or 500k tokens
@@ -228,7 +229,7 @@ function cmdBudget(args, ctx) {
   const cfg = configDir(ctx.env);
   const today = dayKeyOf(ctx.now);
   const b = loadBudgets(cfg);
-  if (b.invalid && sub !== "show") throw new UserError(`${budgetsFile(cfg)} is not valid JSON. Fix it, or delete it to start again.`);
+  if (b.invalid && sub !== "show" && sub !== "check") throw new UserError(`${budgetsFile(cfg)} is not valid JSON. Fix it, or delete it to start again.`);
   // Settings in the file that could not be read as written: named by every budget command, so none goes unnoticed, and
   // a command that saves the file says that they are not kept in it.
   const fileNotes = b.problems.map((p) => `Note: in budgets.json, ${p.text}`);
@@ -237,6 +238,30 @@ function cmdBudget(args, ctx) {
     for (const n of fileNotes) ctx.io.out(n);
     ctx.io.out(`Note: the file was saved just now without ${fileNotes.length === 1 ? "that setting" : "those settings"}.`);
   };
+  if (sub === "check") {
+    const file = budgetsFile(cfg);
+    const entries = entriesOf(b);
+    const problems = b.problems.map(({ at, text }) => ({ at, text }));
+    if (args.json) {
+      ctx.io.out(JSON.stringify({
+        ok: !b.invalid && problems.length === 0,
+        file,
+        invalid: b.invalid,
+        problems,
+        budgets: entries.length,
+      }, null, 2));
+    } else if (b.invalid) {
+      ctx.io.out(`${file} is not valid JSON, so no budget is in force. Fix it, or delete it to start again.`);
+    } else if (!problems.length) {
+      if (!fs.existsSync(file)) ctx.io.out("No budgets set.");
+      else ctx.io.out(`budgets.json: every setting is read as written (${entries.length} ${entries.length === 1 ? "budget" : "budgets"}).`);
+    } else {
+      ctx.io.out(`budgets.json: ${problems.length} setting${problems.length === 1 ? "" : "s"} cannot be read as written.`);
+      for (const problem of problems) ctx.io.out(`  ${problem.text}`);
+    }
+    return b.invalid || problems.length ? 1 : 0;
+  }
+
   if (args.all && args.project !== undefined) throw new UserError("Use --project <dir> or --all, not both.");
   const dir = args.project === undefined ? null : projectDir(args.project, ctx.cwd);
   const model = args.model === undefined ? null : stringArg("--model", args.model, "opus");
@@ -327,7 +352,7 @@ function cmdBudget(args, ctx) {
     return 0;
   }
 
-  throw new UserError(`Unknown budget command "${sub}". Use set, show, clear or extend.`);
+  throw new UserError(`Unknown budget command "${sub}". Use set, show, clear, extend or check.`);
 }
 
 // One line per budget: its limits (with today's extension) and how full they are. `only` limits it to some budget keys
