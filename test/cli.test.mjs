@@ -332,6 +332,20 @@ test("budget check accepts a clean file and reports its budget count", async () 
   } finally { box.cleanup(); }
 });
 
+test("budget check uses singular grammar for one budget", async () => {
+  const box = sandbox();
+  try {
+    fs.mkdirSync(box.guard, { recursive: true });
+    fs.writeFileSync(path.join(box.guard, "budgets.json"), JSON.stringify({
+      version: 1,
+      global: { daily: { unit: "usd", amount: 15 }, mode: "soft" },
+    }));
+    const text = await budget(box, "check");
+    assert.equal(text.code, 0, text.err);
+    assert.equal(text.out, "budgets.json: every setting is read as written (1 budget).");
+  } finally { box.cleanup(); }
+});
+
 test("budget check reports unreadable settings in order and exits 1", async () => {
   const box = sandbox();
   try {

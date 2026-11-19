@@ -116,7 +116,7 @@ claude-cost-guard budget set --daily 3M                            # tokens inst
 claude-cost-guard budget set --daily 5usd --project . --mode hard  # one project (this folder and anything inside it)
 claude-cost-guard budget extend 5usd                               # raise today's limits by $5, until midnight
 claude-cost-guard budget show
-claude-cost-guard budget check
+claude-cost-guard budget check [--json]
 claude-cost-guard budget clear [--project <dir> | --all] [--model <family>] [--daily] [--weekly]
 ```
 

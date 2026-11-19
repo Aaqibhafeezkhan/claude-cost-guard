@@ -29,7 +29,7 @@ Set up
 Budgets (dollars at API list prices, or fresh tokens: input + output + cache writes)
   claude-cost-guard budget set --daily <amount> [--weekly <amount>] [--project <dir> | --all] [--model <family>] [--mode soft|hard]
   claude-cost-guard budget show
-  claude-cost-guard budget check
+  claude-cost-guard budget check [--json]
   claude-cost-guard budget clear [--project <dir> | --all] [--model <family>] [--daily] [--weekly]
   claude-cost-guard budget extend <amount> [--project <dir> | --all] [--model <family>]     raises today's limits; gone at midnight
   amounts: 15usd or '$15' (quote it: shells expand $15), 3M or 500k tokens
@@ -254,7 +254,7 @@ function cmdBudget(args, ctx) {
       ctx.io.out(`${file} is not valid JSON, so no budget is in force. Fix it, or delete it to start again.`);
     } else if (!problems.length) {
       if (!fs.existsSync(file)) ctx.io.out("No budgets set.");
-      else ctx.io.out(`budgets.json: every setting is read as written (${entries.length} budgets).`);
+      else ctx.io.out(`budgets.json: every setting is read as written (${entries.length} ${entries.length === 1 ? "budget" : "budgets"}).`);
     } else {
       ctx.io.out(`budgets.json: ${problems.length} setting${problems.length === 1 ? "" : "s"} cannot be read as written.`);
       for (const problem of problems) ctx.io.out(`  ${problem.text}`);
